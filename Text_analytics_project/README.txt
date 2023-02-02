@@ -4,4 +4,4 @@ This reviews has been got with python scraping. The code is in: Scraping_Phyton.
 
 The reviews has been saved in: Database.zip
 
-In the end this reviews has been analised whit R. The code is in: TextAnalytics.R
+In the end, this reviews has been analised whit R. The code is in: TextAnalytics.R
