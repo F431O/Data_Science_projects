@@ -1,0 +1,12 @@
+# creare le cartelle user e lab sull hdfs
+hdfs dfs -mkdir /user
+hdfs dfs -mkdir /user/lab
+
+#caricare il file 2022-05_bmp180.csv nella cartella lab su hdfs chiamandolo dataset.csv (posizionarsi nella cartella in cui è salvato il file)
+hdfs dfs -put 2022-05_bmp180.csv /user/lab/dataset.csv
+
+#eseguire il job query_1 e salvare il risultato nella cartella result_query1 su hdfs
+python query_1.py -r hadoop hdfs:///user/lab/dataset.csv --output-dir result_query1
+
+#leggere il risultato del job
+hdfs dfs -cat /user/lab/result_query1/part-00000
