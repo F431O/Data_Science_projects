@@ -1,4 +1,4 @@
-The goal of the project is analise the tripAdvisor reviews of the resturant of Turin.
+The goal of the project is analyze the tripAdvisor reviews of the resturant of Turin.
 
 This reviews has been got with python scraping. The code is in: Scraping_Phyton.ipynb
 
