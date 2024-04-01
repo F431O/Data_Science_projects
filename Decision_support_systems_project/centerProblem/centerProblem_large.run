@@ -1,0 +1,42 @@
+reset;
+model centerProblem_relaxed.mod;
+data centerProblem_large.dat;
+expand > centerProblem_relaxed.txt;
+option solver CPLEX;
+
+param totalTime;
+param t0;
+let t0 := time();
+
+solve;
+
+let totalTime := time()-t0;
+
+printf"\n\D (massima distanza tra il domand point e il facility vicino):\n" >> centerProblem_relaxed.txt;
+display D >> centerProblem_relaxed.txt;
+
+printf"\n\Distanze:\n" >> centerProblem_relaxed.txt;
+display d >> centerProblem_relaxed.txt;
+
+printf"\n\Importanza dei singoli domand point:\n" >> centerProblem_relaxed.txt;
+display h >> centerProblem_relaxed.txt;
+
+printf"\n\Domand point che un facility può coprire:\n" >> centerProblem_relaxed.txt;
+display m >> centerProblem_relaxed.txt;
+
+printf"\n\Costi di apertura per ogni facility:\n" >> centerProblem_relaxed.txt;
+display c >> centerProblem_relaxed.txt;
+
+printf"\n\A quale facility deve servirsi ogni domand point:\n" >> centerProblem_relaxed.txt;
+display x >> centerProblem_relaxed.txt;
+
+printf"\n\Quali facility devo aprire:\n" >> centerProblem_relaxed.txt;
+display y >> centerProblem_relaxed.txt;
+
+printf"\n\Costi toali (funzione obiettivo):\n" >> centerProblem_relaxed.txt;
+display costi_totali >> centerProblem_relaxed.txt;
+
+printf"\n\Tempo di esecuzione totale in secondi:\n" >> centerProblem_relaxed.txt;
+display totalTime >> centerProblem_relaxed.txt; #secondi
+
+
