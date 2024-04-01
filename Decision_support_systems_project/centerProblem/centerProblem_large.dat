@@ -1,8 +1,0 @@
-param I:=1000;	# numero dei domand point da servire
-param J:=200;	# numero di possibili location in qui posso aprire un facility
-param p:=50;	# numero di facility da aprire
-
-let{i in 1..I, j in 1..J}d[i,j]:=Uniform(1,100);	# distanze tra il domand point i e il facility j
-let{i in 1..I}h[i]:=Uniform(1,100);		# importanza del domand point i
-let{j in 1..J}m[j]:=Uniform(10,100);		# numero massimo di domand point che il facility j può servire
-let{j in 1..J}c[j]:=Uniform(1,100);		# costo di apertura del facility j
