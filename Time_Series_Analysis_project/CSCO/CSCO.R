@@ -1,0 +1,878 @@
+library(readxl)
+library(bookdown)
+library(webshot)
+library(ggplot2)
+library(gridExtra)
+library(ggforce)
+library(gtable)
+library(tibble)
+library(dplyr)
+library(tidyverse)
+library(tsdl)
+library(xts)
+library(scales)
+library(extraDistr)
+library(fpp3)
+library(aTSA)
+library(urca)
+library(lmtest)
+library(olsrr)
+library(forecast)
+library(DescTools)
+library(tseries)
+library(fBasics)
+library(nortest)
+library("numbers")
+library(lubridate)
+library(qqplotr)
+library(EnvStats)
+library(astsa)
+library(FitAR)
+library(quantmod)
+library(fitdistrplus)
+library(nortest)
+library(timeDate)
+library(timeSeries)
+library(TSA)
+library(lmtest)
+library(forecast)
+library(fGarch)
+library(rugarch) 
+library(zoo)
+library(TTR)
+library(lattice)
+library(leaps)
+library(ltsa)
+library(bestglm)
+library(crayon)
+library(strucchange)
+library(moments)
+
+
+################# Creo un data frame con i dati desiderati, cioè quelli dal 02 gennaio 2018 al 02 aprile 2023 ##################
+getSymbols('CSCO')
+class(CSCO)
+chartSeries(CSCO, subset="2018-01-02::2023-04-03", type="auto", theme=chartTheme('white'))
+
+CSCO_df <- data.frame(CSCO)
+CSCO.Date <- as.Date(rownames(CSCO_df))
+rownames(CSCO_df) <- NULL
+CSCO_df <- add_column(CSCO_df, t=1:nrow(CSCO_df), CSCO.Date, .before = 1)
+
+begin <- which(grepl("2018-01-02", CSCO_df$CSCO.Date))
+end <- which(grepl("2023-04-03", CSCO_df$CSCO.Date))
+Data_df <- CSCO_df[begin:end,]
+Data_df <- dplyr::rename(Data_df, Date=CSCO.Date, Open=CSCO.Open, High=CSCO.High, 
+                         Low=CSCO.Low, Close=CSCO.Close, Volume=CSCO.Volume, Adj.Close=CSCO.Adjusted)
+
+rownames(Data_df) <- NULL
+Data_df$t <- 1:nrow(Data_df)
+Original_Data <- Data_df
+
+################# Divido il dataset in trainig set e test set##################
+DtS_length <- nrow(Data_df)
+TrnS_length <- floor(DtS_length*0.9)
+TstS_length <- DtS_length - TrnS_length
+
+
+Data_df_train <- Data_df[1:TrnS_length,]
+
+##############################################################################################################
+primeFactors(DtS_length)
+primeFactors(DtS_length-1)
+primeFactors(DtS_length-3)
+primeFactors(DtS_length-4)
+primeFactors(DtS_length-5)
+primeFactors(DtS_length-6)
+
+First_Day <- as.character(Data_df$Date[1])
+Last_Day <- as.character(Data_df$Date[DtS_length])
+title_content <- bquote(atop("Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Line Plot della serie dei prezzi di CSCO da ", .(First_Day), " a ", .(Last_Day))))
+subtitle_content <- bquote(paste("Training set ", .(TrnS_length), " Osservazioni. Test set ", .(TstS_length), "Data by courtesy of Yahoo Finance"))
+caption_content <- "Author: Fabio Palmigiani"
+x_name <- bquote("")
+x_breaks_num <- 47
+x_breaks_low <- Data_df$t[1]
+x_breaks_up <- Data_df$t[DtS_length]
+x_binwidth <- floor((x_breaks_up-x_breaks_low)/x_breaks_num)
+x_breaks <- seq(from=x_breaks_low, to=x_breaks_up, by=x_binwidth)
+if((max(x_breaks)-x_breaks_up)>x_binwidth/2){x_breaks <- c(x_breaks,x_breaks_up)}
+x_labs <- Data_df$Date[x_breaks]
+J <- 0
+x_lims <- c(x_breaks_low-J*x_binwidth, x_breaks_up+J*x_binwidth)
+y_name <- bquote("Prezzi a chiusura (US $)")
+y_breaks_num <- 10
+y_max <- max(na.omit(Data_df$Adj.Close))
+y_min <- min(na.omit(Data_df$Adj.Close))
+y_binwidth <- round((y_max-y_min)/y_breaks_num, digits=3)
+y_breaks_low <- floor((y_min/y_binwidth))*y_binwidth
+y_breaks_up <- ceiling((y_max/y_binwidth))*y_binwidth
+y_breaks <- round(seq(from=y_breaks_low, to=y_breaks_up, by=y_binwidth),3)
+y_labs <- format(y_breaks, scientific=FALSE)
+K <- 0.5
+y_lims <- c((y_breaks_low-K*y_binwidth), (y_breaks_up+K*y_binwidth))
+col_k <- bquote("Training set")
+col_b <- bquote("Test set")
+col_g <- bquote("Retta di regressione (Training set)")
+col_r <- bquote("Curva LOES (Training set)")
+leg_labs   <- c(col_k, col_b, col_g, col_r)
+leg_cols   <- c("col_k"="black", "col_b"="blue", "col_r"="red", "col_g"="green")
+leg_breaks <- c("col_k", "col_b", "col_g", "col_r")
+Adj.Close_lp <- ggplot(Data_df) +
+  geom_vline(xintercept = Data_df$t[TrnS_length], size=0.3, colour="black") +
+  geom_smooth(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.7, linetype="solid", 
+              aes(x=t, y=Adj.Close, color="col_g"), method="lm" , formula=y~x, se=FALSE, fullrange=FALSE) +
+  geom_smooth(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.7, linetype="dashed", 
+              aes(x=t, y=Adj.Close, color="col_r"), method="loess", formula=y~x, se=FALSE) +
+  geom_line(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.5, linetype="solid", 
+            aes(x=t, y=Adj.Close, color="col_k", group=1)) +
+  geom_line(data=subset(Data_df, Data_df$t >= t[TrnS_length]), alpha=1, linewidth=0.5, linetype="solid", 
+            aes(x=t, y=Adj.Close, color="col_b", group=1)) +
+  scale_x_continuous(name=x_name, breaks=x_breaks, label=x_labs, limits=x_lims) +
+  scale_y_continuous(name=y_name, breaks=y_breaks, labels=NULL, limits=y_lims,
+                     sec.axis = sec_axis(~., breaks=y_breaks, labels=y_labs)) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  scale_colour_manual(name="Legenda", labels=leg_labs, values=leg_cols, breaks=leg_breaks,
+                      guide=guide_legend(override.aes=list(linetype=c("solid", "solid", "solid", "dashed")))) +
+  theme(plot.title=element_text(hjust=0.5),
+        plot.subtitle=element_text(hjust=0.5),
+        axis.text.x = element_text(angle=-45, vjust=1, hjust=-0.3),
+        legend.key.width = unit(0.8,"cm"), legend.position="bottom")
+plot(Adj.Close_lp)
+
+
+y <-  Data_df_train$Adj.Close
+T <- length(y)
+maxlag <- ceiling(min(10, T/4)) 
+Aut_Fun_y <- acf(y, lag.max=maxlag, type="correlation", plot=FALSE)
+ci_90 <- qnorm((1+0.90)/2)/sqrt(T)
+ci_95 <- qnorm((1+0.95)/2)/sqrt(T)
+ci_99 <- qnorm((1+0.99)/2)/sqrt(T)
+Plot_Aut_Fun_y <- data.frame(lag=Aut_Fun_y$lag, acf=Aut_Fun_y$acf)
+First_Day <- as.character(Data_df_train$Date[1])
+Last_Day <- as.character(Data_df_train$Date[T])
+title_content <- bquote(atop("University of Roma \"Tor Vergata\" - Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Autocorrelogramma dei prezzi a chiusura del titolo CSCO da ", .(First_Day), " a ", .(Last_Day))))
+subtitle_content <- bquote(paste("Data set length ", .(T), " sample points. Data by courtesy of Yahoo Finance"))
+caption_content <- "Author: Fabio Palmigiani"
+x_name <- bquote("lags")
+x_breaks <- Aut_Fun_y$lag
+x_labs <- format(x_breaks, scientific=FALSE)
+ggplot(Plot_Aut_Fun_y, aes(x=lag, y=acf))+
+  geom_segment(aes(x=lag, y=rep(0,length(lag)), xend=lag, yend=acf), linewidth=1, col="black") +
+  geom_hline(aes(yintercept=-ci_90, color="CI_90"), show.legend=TRUE, lty=3) +
+  geom_hline(aes(yintercept=ci_90, color="CI_90"), lty=3) +
+  geom_hline(aes(yintercept=ci_95, color="CI_95"), show.legend=TRUE, lty=4)+
+  geom_hline(aes(yintercept=-ci_95, color="CI_95"), lty=4) +
+  geom_hline(aes(yintercept=-ci_99, color="CI_99"), show.legend=TRUE, lty=4) +
+  geom_hline(aes(yintercept=ci_99, color="CI_99"), lty=4) +
+  scale_x_continuous(name="", breaks=x_breaks, label=x_labs) +
+  scale_y_continuous(name="acf values", breaks=waiver(), labels=NULL,
+                     sec.axis=sec_axis(~., breaks=waiver(), labels=waiver())) +
+  scale_color_manual(name="Conf. Inter.", labels=c("90%","95%","99%"),
+                     values=c(CI_90="green", CI_95="blue", CI_99="red")) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  theme(plot.title=element_text(hjust=0.5), 
+        plot.subtitle=element_text(hjust= 0.5),
+        plot.caption=element_text(hjust=1.0),
+        legend.key.width=unit(0.8,"cm"), legend.position="bottom")
+
+
+
+# Autocorrelogramma parziale.
+y <-  Data_df_train$Adj.Close
+T <- length(y)
+maxlag <- ceiling(min(10, T/4))  
+Part_Aut_Fun_y <- pacf(y, lag.max=maxlag, type="correlation", plot=FALSE)
+ci_90 <- qnorm((1+0.90)/2)/sqrt(T)
+ci_95 <- qnorm((1+0.95)/2)/sqrt(T)
+ci_99 <- qnorm((1+0.99)/2)/sqrt(T)
+Plot_Part_Aut_Fun_y <- data.frame(lag=Part_Aut_Fun_y$lag, pacf=Part_Aut_Fun_y$acf)
+First_Day <- as.character(Data_df_train$Date[1])
+Last_Day <- as.character(Data_df_train$Date[nrow(Data_df_train)])
+x_name <- bquote("lags")
+x_breaks <- Aut_Fun_y$lag
+x_labs <- format(x_breaks, scientific=FALSE)
+title_content <- bquote(atop("University of Roma \"Tor Vergata\" - Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Autocorrelogramma parziale dei prezzi a chiusura del titolo CSCO da ", .(First_Day), " a ", .(Last_Day))))
+subtitle_content <- bquote(paste("Data set length ", .(T), " sample points. Data by courtesy of Yahoo Finance"))
+caption_content <- "Author: Fabio Palmigiani"
+ggplot(Plot_Part_Aut_Fun_y, aes(x=lag, y=pacf)) + 
+  geom_segment(aes(x=lag, y=rep(0,length(lag)), xend=lag, yend=pacf), size = 1, col="black") +
+  geom_hline(aes(yintercept=-ci_90, color="CI_90"), show.legend = TRUE, lty=3) +
+  geom_hline(aes(yintercept=ci_90, color="CI_90"), lty=3) +
+  geom_hline(aes(yintercept=ci_95, color="CI_95"), show.legend = TRUE, lty=4) + 
+  geom_hline(aes(yintercept=-ci_95, color="CI_95"), lty=4) +
+  geom_hline(aes(yintercept=-ci_99, color="CI_99"), show.legend = TRUE, lty=4) +
+  geom_hline(aes(yintercept=ci_99, color="CI_99"), lty=4) +
+  scale_x_continuous(name="", breaks=x_breaks, label=x_labs) +
+  scale_y_continuous(name="pacf values", breaks=waiver(), labels=NULL,
+                     sec.axis = sec_axis(~., breaks=waiver(), labels=waiver())) +
+  scale_color_manual(name="Conf. Inter.", labels=c("90%","95%","99%"),
+                     values=c(CI_90="red", CI_95="blue", CI_99="green")) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  theme(plot.title=element_text(hjust = 0.5), 
+        plot.subtitle=element_text(hjust =  0.5),
+        plot.caption = element_text(hjust = 1.0),
+        legend.key.width = unit(0.8,"cm"), legend.position="bottom")
+
+############################### Analisi dei Rendimenti Logaritmici ###############################
+
+CSCO_df <- add_column(CSCO_df, CSCO.Adjusted.log=log(CSCO_df$CSCO.Adjusted), 
+                      CSCO.Adjusted.log.ret=c(NA,diff(log(CSCO_df$CSCO.Adjusted), lag=1, difference=1)), 
+                      .after="CSCO.Adjusted")
+
+begin <- which(grepl("2018-01-02", CSCO_df$CSCO.Date))
+end <- which(grepl("2023-04-03", CSCO_df$CSCO.Date))
+Data_df <- CSCO_df[begin:end,]
+Data_df <- dplyr::rename(Data_df, Date=CSCO.Date, Open=CSCO.Open, High=CSCO.High, 
+                         Low=CSCO.Low, Close=CSCO.Close, Volume=CSCO.Volume, Adj.Close=CSCO.Adjusted,
+                         Adj.Close.log=CSCO.Adjusted.log, Adj.Close.log.ret=CSCO.Adjusted.log.ret)
+
+rownames(Data_df) <- NULL
+Data_df$t <- 1:nrow(Data_df)
+
+Data_df_train <- Data_df[1:TrnS_length,]
+y <- Data_df_train$Adj.Close.log.ret
+
+###############################################################################################
+# Scatter plot della serie dei rendimenti logaritmici
+First_Day <- as.character(Data_df$Date[1])
+Last_Day <- as.character(Data_df$Date[DtS_length])
+title_content <- bquote(atop("University of Roma \"Tor Vergata\" - Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Scatter Plot della serie dei rendimenti logaritmici di CSCO da ", .(First_Day), " a ", .(Last_Day))))
+subtitle_content <- bquote(paste("Training set length ", .(TrnS_length), " sample points. Test set length ", .(TstS_length), " sample points. Data by courtesy of Yahoo Finance"))
+caption_content <- "Author: Fabio Palmigiani"
+x_name <- bquote("")
+x_breaks_num <- 47 # (deduced from primeFactors(DtS_length- 6)
+x_breaks_low <- Data_df$t[1]
+x_breaks_up <- Data_df$t[DtS_length]
+x_binwidth <- floor((x_breaks_up-x_breaks_low)/x_breaks_num)
+x_breaks <- seq(from=x_breaks_low, to=x_breaks_up, by=x_binwidth)
+if((max(x_breaks)-x_breaks_up)>x_binwidth/2){x_breaks <- c(x_breaks,x_breaks_up)}
+x_labs <- Data_df$Date[x_breaks]
+J <- 0
+x_lims <- c(x_breaks_low-J*x_binwidth, x_breaks_up+J*x_binwidth)
+y_name <- bquote("Rendimenti logaritmici dei prezzi alla chiusura (US $)")
+y_breaks_num <- 10
+y_max <- max(na.omit(Data_df$Adj.Close.log.ret))
+y_min <- min(na.omit(Data_df$Adj.Close.log.ret))
+y_binwidth <- round((y_max-y_min)/y_breaks_num, digits=3)
+y_breaks_low <- floor((y_min/y_binwidth))*y_binwidth
+y_breaks_up <- ceiling((y_max/y_binwidth))*y_binwidth
+y_breaks <- round(seq(from=y_breaks_low, to=y_breaks_up, by=y_binwidth),3)
+y_labs <- format(y_breaks, scientific=FALSE)
+K <- 0.5
+y_lims <- c((y_breaks_low-K*y_binwidth), (y_breaks_up+K*y_binwidth))
+col_k <- bquote("Training set")
+col_b <- bquote("Test set")
+col_g <- bquote("Tetta di regressione (Training set)")
+col_r <- bquote("Curva LOESS (Training set)")
+leg_labs   <- c(col_k, col_b, col_g, col_r)
+leg_cols   <- c("col_k"="black", "col_b"="blue", "col_r"="red", "col_g"="green")
+leg_breaks <- c("col_k", "col_b", "col_g", "col_r")
+Adj.Close.log.ret_sp <- ggplot(Data_df) +
+  geom_vline(xintercept = Data_df$t[TrnS_length], linewidth=0.3, colour="black") +
+  geom_smooth(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.7, linetype="solid", 
+              aes(x=t, y=Adj.Close.log.ret, color="col_g"), method="lm", formula=y~x, se=FALSE, fullrange=FALSE) +
+  geom_smooth(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.7, linetype="dashed", 
+              aes(x=t, y=Adj.Close.log.ret, color="col_r"), method = "loess", formula = y ~ x, se=FALSE) +
+  geom_point(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, size=0.5, shape=19, 
+             aes(x=t, y=Adj.Close.log.ret, color="col_k")) +
+  geom_point(data=subset(Data_df, Data_df$t > t[TrnS_length]), alpha=1, size=0.5, shape=19, 
+             aes(x=t, y=Adj.Close.log.ret, color="col_b")) +
+  scale_x_continuous(name=x_name, breaks=x_breaks, label=x_labs, limits=x_lims) +
+  scale_y_continuous(name=y_name, breaks=y_breaks, labels=NULL, limits=y_lims,
+                     sec.axis = sec_axis(~., breaks=y_breaks, labels=y_labs)) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  scale_colour_manual(name="Legend", labels=leg_labs, values=leg_cols, breaks=leg_breaks,
+                      guide=guide_legend(override.aes=list(shape=c(19,19,NA,NA), 
+                                                           linetype=c("blank", "blank", "solid", "dashed")))) +
+  theme(plot.title=element_text(hjust=0.5),
+        plot.subtitle=element_text(hjust= 0.5),
+        axis.text.x = element_text(angle=-45, vjust=1, hjust=-0.3),
+        legend.key.width = unit(0.8,"cm"), legend.position="bottom")
+plot(Adj.Close.log.ret_sp)
+
+
+# Line plot della serie dei rendimenti logaritmici
+title_content <- bquote(atop("University of Roma \"Tor Vergata\" - Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Line Plot della serie dei rendimenti logaritmici di CSCO da ", .(First_Day), " a ", .(Last_Day))))
+Adj.Close.ret_lp <- ggplot(Data_df) +
+  geom_vline(xintercept = Data_df$t[TrnS_length], linewidth=0.3, colour="black") +
+  geom_smooth(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.7, linetype="solid", 
+              aes(x=t, y=Adj.Close.log.ret, color="col_g"), method="lm", formula=y~x, se=FALSE, fullrange=FALSE) +
+  geom_smooth(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.7, linetype="dashed", 
+              aes(x=t, y=Adj.Close.log.ret, color="col_r"), method = "loess", formula = y ~ x, se=FALSE) +
+  geom_line(data=subset(Data_df, Data_df$t <= t[TrnS_length]), alpha=1, linewidth=0.5, linetype="solid", 
+            aes(x=t, y=Adj.Close.log.ret, color="col_k", group=1)) +
+  geom_line(data=subset(Data_df, Data_df$t >= t[TrnS_length]), alpha=1, linewidth=0.5, linetype="solid", 
+            aes(x=t, y=Adj.Close.log.ret, color="col_b", group=1)) +
+  scale_x_continuous(name=x_name, breaks=x_breaks, label=x_labs, limits=x_lims) +
+  scale_y_continuous(name=y_name, breaks=y_breaks, labels=NULL, limits=y_lims,
+                     sec.axis = sec_axis(~., breaks=y_breaks, labels=y_labs)) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  scale_colour_manual(name="Legend", labels=leg_labs, values=leg_cols, breaks=leg_breaks,
+                      guide=guide_legend(override.aes=list(linetype=c("solid", "solid", "solid", "dashed")))) +
+  theme(plot.title=element_text(hjust=0.5),
+        plot.subtitle=element_text(hjust=0.5),
+        axis.text.x = element_text(angle=-45, vjust=1, hjust=-0.3),
+        legend.key.width = unit(0.8,"cm"), legend.position="bottom")
+plot(Adj.Close.ret_lp)
+
+
+Data_df <- data.frame(x=Data_df_train$t, y=y)
+Kurt_Gauss <- DescTools::Kurt(x=y, weights = NULL, na.rm = TRUE, method = 2, conf.level = 0.95, ci.type ="classic")
+show(Kurt_Gauss)
+
+BP <- lmtest::bptest(formula = y~x, varformula = NULL, studentize = TRUE, data=Data_df)
+show(BP)
+
+var.formula <- ~ x+I(x^2)
+W <- lmtest::bptest(formula = y ~ x, varformula = var.formula, studentize = TRUE, data=Data_df)
+show(W)
+
+
+# Studio la stazionarità dei rendimenti logaritmici
+y_KPSS_ur_tau_nil <- ur.kpss(y, type="tau", lags="nil")
+summary(y_KPSS_ur_tau_nil)
+
+y_KPSS_ur_tau_short <- ur.kpss(y, type="tau", lags="short")
+summary(y_KPSS_ur_tau_short)
+
+y_KPSS_ur_tau_long <- ur.kpss(y, type="tau", lags="long")
+summary(y_KPSS_ur_tau_long)
+
+
+# AUTOCORRELOGRAMMA DEI RENDIMENTI LOGARITMICI.
+y <- Data_df_train$Adj.Close.log.ret
+T <- length(y)
+maxlag <- ceiling(min(10, T/4))    
+Aut_Fun_y <- acf(y, lag.max=maxlag, type="correlation", plot=FALSE)
+ci_90 <- qnorm((1+0.90)/2)/sqrt(T)
+ci_95 <- qnorm((1+0.95)/2)/sqrt(T)
+ci_99 <- qnorm((1+0.99)/2)/sqrt(T)
+Plot_Aut_Fun_y <- data.frame(lag=Aut_Fun_y$lag, acf=Aut_Fun_y$acf)
+First_Day <- as.character(Data_df_train$Date[1])
+Last_Day <- as.character(Data_df_train$Date[T])
+title_content <- bquote(atop("University of Roma \"Tor Vergata\" - Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Autocorrelogramma parziale dei rendimenti logaritmici di CSCO da ", .(First_Day), " a ", .(Last_Day))))
+subtitle_content <- bquote(paste("Training set length ", .(TrnS_length), " sample points. Data by courtesy of Yahoo Finance"))
+caption_content <- "Author: Fabio Palmigiani"
+x_name <- bquote("lags")
+x_breaks <- Aut_Fun_y$lag
+x_labs <- format(x_breaks, scientific=FALSE)
+ggplot(Plot_Aut_Fun_y, aes(x=lag, y=acf))+
+  geom_segment(aes(x=lag, y=rep(0,length(lag)), xend=lag, yend=acf), linewidth=1, col="black") +
+  geom_hline(aes(yintercept=-ci_90, color="CI_90"), show.legend=TRUE, lty=3) +
+  geom_hline(aes(yintercept=ci_90, color="CI_90"), lty=3) +
+  geom_hline(aes(yintercept=ci_95, color="CI_95"), show.legend=TRUE, lty=4)+
+  geom_hline(aes(yintercept=-ci_95, color="CI_95"), lty=4) +
+  geom_hline(aes(yintercept=-ci_99, color="CI_99"), show.legend=TRUE, lty=4) +
+  geom_hline(aes(yintercept=ci_99, color="CI_99"), lty=4) +
+  scale_x_continuous(name="", breaks=x_breaks, label=x_labs) +
+  scale_y_continuous(name="acf values", breaks=waiver(), labels=NULL,
+                     sec.axis=sec_axis(~., breaks=waiver(), labels=waiver())) +
+  scale_color_manual(name="Conf. Inter.", labels=c("90%","95%","99%"),
+                     values=c(CI_90="green", CI_95="blue", CI_99="red")) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  theme(plot.title=element_text(hjust=0.5), 
+        plot.subtitle=element_text(hjust= 0.5),
+        plot.caption=element_text(hjust=1.0),
+        legend.key.width=unit(0.8,"cm"), legend.position="bottom")
+
+# autocorrelogramma parziale rendimenti logaritmici
+Part_Aut_Fun_y <- pacf(y, lag.max=maxlag, type="correlation", plot=FALSE)
+ci_90 <- qnorm((1+0.90)/2)/sqrt(T)
+ci_95 <- qnorm((1+0.95)/2)/sqrt(T)
+ci_99 <- qnorm((1+0.99)/2)/sqrt(T)
+Plot_Part_Aut_Fun_y <- data.frame(lag=Part_Aut_Fun_y$lag, pacf=Part_Aut_Fun_y$acf)
+First_Day <- as.character(Data_df_train$Date[1])
+Last_Day <- as.character(Data_df_train$Date[nrow(Data_df_train)])
+x_name <- bquote("lags")
+x_breaks <- Aut_Fun_y$lag
+x_labs <- format(x_breaks, scientific=FALSE)
+title_content <- bquote(atop("University of Roma \"Tor Vergata\" - Essentials of Time Series Analysis \u0040 Master in Data Science 2022-2023",
+                             paste("Autocorrelogramma parziale dei rendimenti logaritmici di CSCO da ", .(First_Day), " a ", .(Last_Day))))
+subtitle_content <- bquote(paste("Training set length ", .(TrnS_length), " sample points. Data by courtesy of Yahoo Finance"))
+caption_content <- "Author: Fabio Palmigiani"
+ggplot(Plot_Part_Aut_Fun_y, aes(x=lag, y=pacf)) + 
+  geom_segment(aes(x=lag, y=rep(0,length(lag)), xend=lag, yend=pacf), size = 1, col="black") +
+  geom_hline(aes(yintercept=-ci_90, color="CI_90"), show.legend = TRUE, lty=3) +
+  geom_hline(aes(yintercept=ci_90, color="CI_90"), lty=3) +
+  geom_hline(aes(yintercept=ci_95, color="CI_95"), show.legend = TRUE, lty=4) + 
+  geom_hline(aes(yintercept=-ci_95, color="CI_95"), lty=4) +
+  geom_hline(aes(yintercept=-ci_99, color="CI_99"), show.legend = TRUE, lty=4) +
+  geom_hline(aes(yintercept=ci_99, color="CI_99"), lty=4) +
+  scale_x_continuous(name="", breaks=x_breaks, label=x_labs) +
+  scale_y_continuous(name="pacf values", breaks=waiver(), labels=NULL,
+                     sec.axis = sec_axis(~., breaks=waiver(), labels=waiver())) +
+  scale_color_manual(name="Conf. Inter.", labels=c("90%","95%","99%"),
+                     values=c(CI_90="red", CI_95="blue", CI_99="green")) +
+  ggtitle(title_content) +
+  labs(subtitle=subtitle_content, caption=caption_content) +
+  theme(plot.title=element_text(hjust = 0.5), 
+        plot.subtitle=element_text(hjust =  0.5),
+        plot.caption = element_text(hjust = 1.0),
+        legend.key.width = unit(0.8,"cm"), legend.position="bottom")
+
+
+l <- 0
+y_ADF_ur.df_trend_0_lags <- ur.df(y, type="trend", lags=l, selectlags ="Fixed")
+summary(y_ADF_ur.df_trend_0_lags)
+
+long_lags <- floor(12*(length(y)/100)^(1/4))
+y_ADF_ur.df_trend_long_lags <- ur.df(y, type="trend", lags=long_lags, selectlags ="Fixed")
+summary(y_ADF_ur.df_trend_long_lags)
+
+short_lags <- floor(4*(length(y)/100)^(1/4))
+y_ADF_ur.df_trend_short_lags <- ur.df(y, type="trend", lags=short_lags, selectlags ="Fixed")
+summary(y_ADF_ur.df_trend_short_lags)
+
+y_ADF_ur.df_trend_AIC_lags <- ur.df(y, type="trend", lags=long_lags, selectlags ="AIC")
+summary(y_ADF_ur.df_trend_AIC_lags)
+
+y_ADF_ur.df_trend_BIC_lags <- ur.df(y, type="trend", lags=long_lags, selectlags ="BIC")
+summary(y_ADF_ur.df_trend_BIC_lags)
+
+
+T <- length(y)
+GARCH_Adj.Close.log.ret <-list()     
+
+cn <- 1                                                          
+for (p in 1:4){                       
+  for(q in 1:4){        
+    tryCatch({
+      GARCH_Adj.Close.log.ret[[cn]] <- tseries::garch(y, order=c(p,q), series=NULL, coef=NULL, maxiter=200,
+                                                      grad="analytical", trace=TRUE, eps=NULL, 
+                                                      abstol = max(1e-20, .Machine$double.eps^2),
+                                                      reltol = max(1e-10, .Machine$double.eps^(2/3)), 
+                                                      xtol = sqrt(.Machine$double.eps),
+                                                      falsetol = 1e2 * .Machine$double.eps)
+      show(GARCH_Adj.Close.log.ret[[cn]])
+      cn <- cn+1
+      cat("  \n","  \n")
+    }, error = function(e){
+      cat(red(sprintf("caught Error: %s", e)))
+      cat(red("GARCH parameter p=", p), red("GARCH parameter q=", q))
+      cat("\n")
+      traceback(1, max.lines = 1)
+      cat("  \n","  \n")
+    }, warning = function (w){
+      cat(yellow(sprintf("caught Warning: %s", w)))
+      cat(yellow("GARCH parameter p=", p), yellow("GARCH parameter q=", q))
+      cat("\n")
+      traceback(1, max.lines = 1)
+      cat("  \n","  \n")
+    }
+    )
+  }
+}
+
+
+GARCH_Adj.Close.log.ret_Likeli <- sapply(GARCH_Adj.Close.log.ret, function(x) x$n.likeli)
+show(GARCH_Adj.Close.log.ret_Likeli)
+
+GARCH_Adj.Close.log.ret_order <- sapply(GARCH_Adj.Close.log.ret, function(x) x$order)
+show(GARCH_Adj.Close.log.ret_order)
+
+GARCH_Adj.Close.log.ret_AIC <- 2*colSums(GARCH_Adj.Close.log.ret_order)-log(GARCH_Adj.Close.log.ret_Likeli^2)
+show(GARCH_Adj.Close.log.ret_AIC)
+GARCH_Adj.Close.log.ret_sort_AIC <- sort(GARCH_Adj.Close.log.ret_AIC, decreasing=FALSE)
+show(GARCH_Adj.Close.log.ret_sort_AIC)
+GARCH_Adj.Close.log.ret_incr_AIC <- match(GARCH_Adj.Close.log.ret_AIC, GARCH_Adj.Close.log.ret_sort_AIC)
+show(GARCH_Adj.Close.log.ret_incr_AIC)
+
+GARCH_Adj.Close.log.ret_BIC <- log(T)*colSums(GARCH_Adj.Close.log.ret_order)-log(GARCH_Adj.Close.log.ret_Likeli^2)
+show(GARCH_Adj.Close.log.ret_BIC)
+GARCH_Adj.Close.log.ret_sort_BIC <- sort(GARCH_Adj.Close.log.ret_BIC, decreasing=FALSE)
+show(GARCH_Adj.Close.log.ret_sort_BIC)
+GARCH_Adj.Close.log.ret_incr_BIC <- match(GARCH_Adj.Close.log.ret_BIC, GARCH_Adj.Close.log.ret_sort_BIC)
+show(GARCH_Adj.Close.log.ret_incr_BIC)
+
+
+cn_sort_AIC <- GARCH_Adj.Close.log.ret_incr_AIC
+cn_sort_AIC
+for (index_p in cn_sort_AIC){
+    tseries::garch(y, order=c(GARCH_Adj.Close.log.ret[[index_p]]$order[1],
+                          GARCH_Adj.Close.log.ret[[index_p]]$order[2]), 
+               series=NULL, coef=NULL, maxiter=200,
+               grad=c("analytical","numerical"), trace=TRUE, eps=NULL, 
+               abstol = max(1e-20, .Machine$double.eps^2),
+               reltol = max(1e-10, .Machine$double.eps^(2/3)), 
+               xtol = sqrt(.Machine$double.eps),
+               falsetol = 1e2 * .Machine$double.eps)
+  
+}
+# tutti i coefficenti danno come risultato "FALSE CONVERGENCE"
+GARCH_Adj.Close.log.ret_sel <- GARCH_Adj.Close.log.ret[[cn_sort_AIC[1]]]
+GARCH_Adj.Close.log.ret_sel$order
+show(GARCH_Adj.Close.log.ret_sel)
+
+alpha_0 <- as.numeric(GARCH_Adj.Close.log.ret_sel$coef[1])
+alpha_1 <- as.numeric(GARCH_Adj.Close.log.ret_sel$coef[2])
+beta_1 <- as.numeric(GARCH_Adj.Close.log.ret_sel$coef[3])
+show(c(alpha_0, alpha_1, beta_1))
+
+
+############################################ Studio residui del modello GARCH(1,1) ############################################
+#Si studia l’eteroschedasticità dei residui
+y <- GARCH_Adj.Close.log.ret_sel$residuals
+Data_df <- data.frame(x=Data_df_train$t, y=y)
+Kurt_Gauss <- DescTools::Kurt(y, weights=NULL, na.rm=TRUE, method=2, conf.level=0.99, ci.type="bca", R=2000) 
+show(Kurt_Gauss)
+
+BP <- lmtest::bptest(formula = y~x, varformula = NULL, studentize = TRUE, data=Data_df)
+show(BP)
+
+var.formula <- ~ x+I(x^2)
+W <- lmtest::bptest(formula = y ~ x, varformula = var.formula, studentize = TRUE, data=Data_df)
+show(W)
+
+y_KPSS_ur_tau_nil <- ur.kpss(y, type="tau", lags="nil")
+summary(y_KPSS_ur_tau_nil)
+
+y_KPSS_ur_tau_short <- ur.kpss(y, type="tau", lags="short")
+summary(y_KPSS_ur_tau_short)
+
+y_KPSS_ur_tau_long <- ur.kpss(y, type="tau", lags="long")
+summary(y_KPSS_ur_tau_long)
+
+# Autocorrelogrammadei residui del modello GARCH(1,1)
+y <- na.omit(GARCH_Adj.Close.log.ret_sel$residuals)
+T<- length(y)
+maxlag <- ceiling(min(10,T/4)) 
+Aut_Fun_y <- acf(y, lag.max=maxlag, type="correlation", plot=FALSE)
+ci_90 <- qnorm((1+0.90)/2)/sqrt(T)
+ci_95 <- qnorm((1+0.95)/2)/sqrt(T)
+ci_99 <- qnorm((1+0.99)/2)/sqrt(T)
+Plot_Aut_Fun_y <- data.frame(lag=Aut_Fun_y$lag, acf=Aut_Fun_y$acf)
+First_Day <- as.character(Data_df_train$Date[1])
+Last_Day <- as.character(Data_df_train$Date[T])
+title_content <- bquote(atop("Università di Roma \"Tor Vergata\"- Master in Data Science 2022-2023", 
+                             paste("Autocorrelogramma dei residui del modello GARCH(1,1) da ", .(First_Day)," a ", .(Last_Day))))
+subtitle_content <- bquote(paste("num. osservazioni = ", .(T),", num. lag = ", .(maxlag)))
+caption_content <-"Autore: Fabio Palmigiani"
+x_name <- bquote("lags")
+x_breaks <- Aut_Fun_y$lag
+x_labs <- format(x_breaks, scientific=FALSE)
+ggplot(Plot_Aut_Fun_y, aes(x=lag, y=acf))+ geom_segment(aes(x=lag, y=rep(0,length(lag)), xend=lag, yend=acf), linewidth=1, col="black") + 
+  geom_hline(aes(yintercept=-ci_90, color="CI_90"), show.legend=TRUE, lty=3) + 
+  geom_hline(aes(yintercept=ci_90, color="CI_90"), lty=3) + 
+  geom_hline(aes(yintercept=ci_95, color="CI_95"), show.legend=TRUE, lty=4)+ 
+  geom_hline(aes(yintercept=-ci_95, color="CI_95"), lty=4) + 
+  geom_hline(aes(yintercept=-ci_99, color="CI_99"), show.legend=TRUE, lty=4) +
+  geom_hline(aes(yintercept=ci_99, color="CI_99"), lty= 4) + 
+  scale_x_continuous(name="", breaks=x_breaks, label=x_labs) + 
+  scale_y_continuous(name="ACF", breaks=waiver(), labels=NULL, sec.axis=sec_axis(~., breaks=waiver(), labels=waiver())) + 
+  scale_color_manual(name="Inter. Conf.", labels=c("90%","95%","99%"), values=c(CI_90="green", CI_95="blue", CI_99= "red")) + 
+  ggtitle(title_content) + labs(subtitle=subtitle_content, caption=caption_content) + 
+  theme(plot.title=element_text(hjust = 0.5, size = 10),
+        plot.subtitle=element_text(hjust =0.5, size =8), 
+        plot.caption = element_text(hjust = 1.0, size =8), 
+        legend.key.width = unit(0.8,"cm"), legend.position="bottom")
+
+# Autocorrelogramma parziale
+y <- na.omit(GARCH_Adj.Close.log.ret_sel$residuals)
+T<- length(y)
+maxlag <- ceiling(min(10,T/4)) 
+Part_Aut_Fun_y <- pacf(y, lag.max=maxlag, type="correlation", plot=FALSE)
+ci_90 <- qnorm((1+0.90)/2)/sqrt(T)
+ci_95 <- qnorm((1+0.95)/2)/sqrt(T)
+ci_99 <- qnorm((1+0.99)/2)/sqrt(T)
+Plot_Part_Aut_Fun_y <- data.frame(lag=Part_Aut_Fun_y$lag, pacf=Part_Aut_Fun_y$acf)
+First_Day <- as.character(Data_df_train$Date[1])
+Last_Day <- as.character(Data_df_train$Date[nrow(Data_df_train)])
+x_name <- bquote("lags")
+x_breaks <- Aut_Fun_y$lag
+x_labs <- format(x_breaks, scientific=FALSE)
+title_content <- bquote(atop("Università di Roma \"Tor Vergata\"- Master in Data Science 2022-2023", 
+                             paste("Autocorrelogramma parziale dei residui del modello GARCH(1,1) da ", .(First_Day)," a ", .(Last_Day))))
+subtitle_content <- bquote(paste("num. osservazioni = ", .(T),", num. lag = ", .(maxlag)))
+caption_content <-"Autore: Fabio Palmigiani"
+ggplot(Plot_Part_Aut_Fun_y, aes(x=lag, y=pacf)) + geom_segment(aes(x=lag, y=rep(0,length(lag)), xend=lag, yend=pacf), size =1, col="black") + 
+  geom_hline(aes(yintercept=-ci_90, color="CI_90"), show.legend =TRUE, lty=3) + 
+  geom_hline(aes(yintercept=ci_90, color="CI_90"), lty=3) + 
+  geom_hline(aes(yintercept=ci_95, color="CI_95"), show.legend =TRUE, lty=4) + 
+  geom_hline(aes(yintercept=-ci_95, color="CI_95"), lty=4) + 
+  geom_hline(aes(yintercept=-ci_99, color="CI_99"), show.legend =TRUE, lty=4) + 
+  geom_hline(aes(yintercept=ci_99, color="CI_99"), lty=4) +
+  scale_x_continuous(name="", breaks=x_breaks, label=x_labs) + 
+  scale_y_continuous(name= "PACF", breaks=waiver(), labels=NULL, sec.axis = sec_axis(~., breaks=waiver(), labels=waiver())) + 
+  scale_color_manual(name= "Inter. Conf.", labels=c("90%", "95%", "99%"), values=c(CI_90="green", CI_95="blue", CI_99= "red")) + 
+  ggtitle(title_content) + labs(subtitle=subtitle_content, caption=caption_content) + 
+  theme(plot.title=element_text(hjust =0.5, size =10), 
+        plot.subtitle=element_text(hjust =0.5, size =8), 
+        plot.caption = element_text(hjust = 1.0, size =8), 
+        legend.key.width = unit(0.8, "cm"), legend.position= "bottom")
+
+
+y <- na.omit(GARCH_Adj.Close.log.ret_sel$residuals)
+T <- length(y)
+maxlag <- ceiling(min(10,T/4))
+LjungBoxTest(y, lag.max=maxlag, k=0, StartLag=1, SquaredQ=FALSE)
+
+
+z <- as.vector(na.omit(GARCH_Adj.Close.log.ret_sel$residuals))
+descdist(z, discrete = FALSE, method ="sample", graph = TRUE, boot= 1000)
+
+
+z_st <- (1/sd(z))*as.vector(z-mean(z))
+z_st_qemp <- qemp(ppoints(z_st), z_st) 
+z_st_demp <- demp(z_st_qemp, z_st) 
+z_st_pemp <- pemp(z_st_qemp, z_st) 
+x <- z_st_qemp
+y_d <- z_st_demp
+y_p <- z_st_pemp
+hist(z_st, col="green", border="black", xlim=c(x[1]-2.0, x[length(x)]+2.0), 
+                     ylim=c(0, y_d[length(y_d)]+ 0.75), freq=FALSE, main="Istogramma e funzione di densità empirica dei residui standardizzati del modello GARCH(1,1)", 
+                     xlab="Residui Standardizzati", 
+                     ylab="Densità",
+                     cex.main=0.9)
+lines(density(z_st), lwd=2, col="darkgreen")
+
+# funzione di distrtibuzione empirica
+ecdfPlot(z_st, discrete=TRUE, prob.method="emp.probs", type="s", plot.it=TRUE, add=FALSE, ecdf.col="darkgreen", ecdf.lwd=2, ecdf.lty=1, curve.fill=FALSE, 
+         main="Funzione di ripartizione empirica dei residui standardizzati del modello GARCH(1,1)", 
+         xlab="Residui Standardizzati",
+         ylab="Funzione di Ripartizione", 
+         xlim=c(x[1]-1.0, x[length(x)]+1.0),cex.main=0.9)
+
+
+dt_ls <- function(x, m, s, df)	1/s*dt((x-m)/s, df)
+pt_ls <- function(q, m, s, df)  pt((q-m)/s, df)
+qt_ls <- function(p, m, s, df)  qt(p, df)*s+m
+rt_ls <- function(n, m, s, df)  rt(n,df)*s+m
+
+
+fitdistr_t_ls <- fitdistr(z_st, dt_ls, start=list(m=0, s=sqrt(1/3), df=3), lower=c(0,0,2))
+
+m <- as.numeric(fitdistr_t_ls$estimate[1])
+s <- as.numeric(fitdistr_t_ls$estimate[2])
+df <- as.numeric(fitdistr_t_ls$estimate[3])
+
+# Confronto densità tra la distribuzione dei residui standardizzati del modello GARCH(1,1) e la distribuzione di Student Generalizzata
+hist(z_st, col="green", border="black", xlim=c(x[1]-2.0, x[length(x)]+2.0), ylim=c(0, y_d[length(y_d)]+0.75), 
+     freq=FALSE, main="Confronto densità tra la distribuzione dei residui standardizzati del modello GARCH(1,1) e la distribuzione di Student Generalizzata", 
+     xlab="Residui Standardizzati", ylab="Densità")
+lines(density(z_st), lwd=2, col="darkgreen")
+lines(x, dt_ls(x, m=m, s=s, df=df), lwd=2, col="blue")
+legend("topleft", legend=c("Densità Empirica", "Densità Teorica"), col=c("darkgreen", "blue"), 
+       lty=1, lwd=0.1, cex=0.8, x.intersp=0.50, y.intersp=0.40, text.width=2, seg.len=1, text.font=4, box.lty=0,
+       inset=-0.01, bty="n")
+
+m
+s
+df
+
+
+##################################### PREVISIONE #####################################
+n <-1000
+T<- TstS_length 
+y_pred_distrname_mat <- matrix(NA, nrow=T, ncol = n)
+sigma <- rep(NA, length.out=T) 
+y <- Data_df_train$Adj.Close.log[c(1:TrnS_length)] 
+prev_adj_close <- matrix(NA, nrow=T, ncol = n)
+x <- rep(NA, length.out=T)                 
+
+for(k in 1:n){
+  set.seed(k)
+  
+  w <- rt_ls(T, m=m, s=s, df=df)
+  x_0 <- CSCO_df$CSCO.Adjusted.log.ret[TrnS_length-1] 
+  sigma_0 <- sd(CSCO_df$CSCO.Adjusted.log.ret[c(1:TrnS_length)], na.rm=TRUE)   
+  sigma_1 <- sqrt(alpha_0 + alpha_1*(x_0)^2 + beta_1*(sigma_0)^2)
+  x_1 <- CSCO_df$CSCO.Adjusted.log.ret[TrnS_length]
+  sigma[1] <- sqrt(alpha_0 + alpha_1*(x_1)^2 + beta_1*((sigma_1)^2))
+  x[1] <- sigma[1]*w[1]
+  
+  for(t in 2:T){
+    sigma[t] <- sqrt(alpha_0 + alpha_1*x[t-1]^2 + beta_1* (sigma[t-1]^2))
+    x[t] <- sigma[t]*w[t]
+  }
+  
+  y_pred_distrname_mat[,k] <- x
+  prev_adj_close[1,k] =  exp(exp(log(y[TrnS_length]) - mean(y_pred_distrname_mat[,k])))
+  for (t in 2:T){
+    prev_adj_close[t,k] =  exp(exp(log(log(prev_adj_close[t-1,k]) - mean(y_pred_distrname_mat[t,k]))))
+  }
+}
+
+real_path <- CSCO_df$CSCO.Adjusted.log.ret[c((TrnS_length+1):DtS_length)]
+Q = matrix(NA, nrow=T, ncol=9)
+Q[,1] <- c(real_path, rep(NA,T-length(real_path)))
+for(t in 1:T){
+  Q[t,2] <- mean(y_pred_distrname_mat[t,1:n])
+  Q[t,3:9] <- quantile(y_pred_distrname_mat[t,1:n], probs=c(0.50, 0.005, 0.025, 0.05, 0.95, 0.975, 0.995))
+}
+
+# Viene generato un primo plot per valutare la previsione dei rendimenti logaritmici
+plot(Q[,1], type ="b", pch=19, col="red", ylim=c(-0.08,0.08), 
+     xlab="Tempo (t)",
+     ylab="Rendimenti logaritmici (US $)"
+     ,main="Previsione rendimenti logaritmici del Test Set")
+lines(Q[,2], type = "l", lty=1, col="black")
+lines(Q[,3], type = "l", lty=1, col="brown")
+lines(Q[,4], type = "l", lty=1, col="green")
+lines(Q[,9], type = "l", lty=1, col="green")
+lines(Q[,5], type = "l", lty=1, col="blue")
+lines(Q[,8], type = "l", lty=1, col="blue")
+lines(Q[,6], type = "l", lty=1, col="red")
+lines(Q[,7], type = "l", lty=1, col="red")
+
+legend(x ="topleft", legend = c("predizione puntuale","Int. Conf. 90%","Int. Conf. 95%","Int. Conf. 99%"), 
+       lty = c(1,1,1,1), 
+       cex= 0.5, col = c("brown","red","blue","green"), 
+       lwd = 2) 
+legend(x ="topright", legend ="Valori Reali", 
+       pch =16, cex=0.5, col ="red")
+
+
+##############################################################################################################
+# Si effettua la trasformazione inversa per ottenere la previsione dei prezzi, e si genera un plot analogo a quello precedente.
+#################################################################################################################
+
+real_path <- Original_Data$Adj.Close[c((TrnS_length+1):DtS_length)]
+Q_adj_close = matrix(NA, nrow=T, ncol=9)
+Q_adj_close[,1] <- c(real_path, rep(NA,T-length(real_path)))
+for(t in 1:T){
+  Q_adj_close[t,2] <- mean(prev_adj_close[t,1:n])
+  Q_adj_close[t,3:9] <- quantile(prev_adj_close[t,1:n], probs=c(0.50, 0.005, 0.05, 0.10, 0.90, 0.95, 0.995))
+}
+
+y_lim_sup = max(Q_adj_close[,9])
+y_lim_inf = min(Q_adj_close[,4])
+
+plot(Q_adj_close[,1], type = "b", pch=19, col="red", ylim=c(y_lim_inf, y_lim_sup))
+lines(Q_adj_close[,2], type = "l", lty=1, col="black")
+lines(Q_adj_close[,3], type = "l", lty=1, col="brown")
+lines(Q_adj_close[,4], type = "l", lty=1, col="green")
+lines(Q_adj_close[,9], type = "l", lty=1, col="green")
+lines(Q_adj_close[,5], type = "l", lty=1, col="blue")
+lines(Q_adj_close[,8], type = "l", lty=1, col="blue")
+lines(Q_adj_close[,6], type = "l", lty=1, col="red")
+lines(Q_adj_close[,7], type = "l", lty=1, col="red")
+
+legend(x="topleft", legend = c("predizione puntuale","Int. Conf. 90%","Int. Conf. 95%","Int. Conf. 99%"),
+       lty = c(1,1,1,1), cex=0.5, 
+       col = c("brown", "red", "blue", "green"), lwd = 2) 
+legend(x ="topright", legend = "Valori Reali", pch = 16, cex=0.5, col = "red")
+###########################################################################################################
+# Si rappresenta la serie originale, con le previsioni per il test set.
+############################################################################################################
+CSCO_p_prev <- c(rep(NA,TrnS_length),Q_adj_close[,2])
+CSCO_q99_up <- c(rep(NA,TrnS_length),Q_adj_close[,9])
+CSCO_q99_low <- c(rep(NA,TrnS_length),Q_adj_close[,4])
+CSCO_q95_up <- c(rep(NA,TrnS_length),Q_adj_close[,8])
+CSCO_q95_low <- c(rep(NA,TrnS_length),Q_adj_close[,5])
+CSCO_q90_up <- c(rep(NA,TrnS_length),Q_adj_close[,7])
+CSCO_q90_low <- c(rep(NA,TrnS_length),Q_adj_close[,6])
+
+CSCO_pred_full_df <- Original_Data[c("t","Date","Adj.Close")]
+
+CSCO_pred_full_df <- add_column(CSCO_pred_full_df, 
+                                CSCO_point_for=CSCO_p_prev,
+                                CSCO_q99_up=CSCO_q99_up, 
+                                CSCO_q99_low=CSCO_q99_low,
+                                CSCO_q95_up=CSCO_q95_up, 
+                                CSCO_q95_low=CSCO_q95_low,
+                                CSCO_q90_up=CSCO_q90_up,
+                                CSCO_q90_low=CSCO_q90_low)
+
+Data_df <- CSCO_pred_full_df
+length <- nrow(Data_df)
+T <- TrnS_length
+First_Day <- CSCO_pred_full_df$Date[1]
+Last_Day <- CSCO_pred_full_df$Date[length]
+title_content <- bquote(atop("Università di Roma \"Tor Vergata\"- Master in Data Science 2022-2023", 
+                             paste("Training Set e previsione del Test Set della serie CSCO")))
+subtitle_content <- bquote(paste("Osservazioni Training Set: ", .(TrnS_length),". Osservazioni Test Set: ", .(TstS_length),"."))
+caption_content <-"Author: Fabio Palmiginai"
+x_name <- bquote("")
+x_breaks_num <- 33
+x_breaks_low <- Data_df$t[1]
+x_breaks_up <- Data_df$t[length]
+x_binwidth <- floor((x_breaks_up-x_breaks_low)/x_breaks_num)
+x_breaks <- seq(from=x_breaks_low, to=x_breaks_up, by=x_binwidth)
+if((max(x_breaks)-x_breaks_up)>x_binwidth/2)
+  {x_breaks <- c(x_breaks,x_breaks_up)}
+x_labs <- paste(Data_df$Date[x_breaks])
+J <-0
+x_lims <- c(x_breaks_low-J*x_binwidth, x_breaks_up+J*x_binwidth)
+y_name <- bquote("Prezzi a chiusura")
+y_breaks_num <-15
+y_max <- max(na.omit(Data_df$Adj.Close),na.omit(Data_df$CSCO_q99_up))
+y_min <- min(na.omit(Data_df$Adj.Close),na.omit(Data_df$CSCO_q99_low))
+y_binwidth <- round((y_max-y_min)/y_breaks_num, digits=3)
+y_breaks_low <- floor(y_min/y_binwidth)*y_binwidth
+y_breaks_up <- ceiling(y_max/y_binwidth)*y_binwidth
+y_breaks <- round(seq(from=y_breaks_low, to=y_breaks_up, by=y_binwidth),digits=3)
+y_labs <- format(y_breaks, scientific=FALSE)
+K <-0
+y_lims <- c((y_breaks_low-K*y_binwidth), (y_breaks_up+K*y_binwidth))
+line_black <- bquote("Training Set")
+line_magenta <- bquote("Test Set")
+line_brown <- bquote("Pred.")
+line_green <- bquote("90% Int.Pred.")
+line_red <- bquote("95% Int.Pred.")
+line_orange <- bquote("99% Int.Pred.")
+leg_line_labs <- c(line_black, line_brown, line_magenta, line_green, line_red,line_orange)
+leg_line_breaks <- c("line_black","line_brown","line_magenta","line_green","line_red","line_orange")
+leg_line_cols <- c("line_black" ="black", "line_brown"="brown","line_magenta"="magenta","line_green"="green","line_red"="red","line_orange"="orange")
+fill_g <- bquote("Banda 90%")
+fill_r <- bquote("Banda 95%")
+fill_o <- bquote("Banda 99%")
+leg_fill_labs <- c( fill_g, fill_r,fill_o)
+leg_fill_breaks <- c("fill_g","fill_r","fill_o")
+leg_fill_cols <- c("fill_g" ="lightgreen","fill_r"="orangered","fill_o"="orange")
+leg_col_labs <- leg_line_labs
+leg_col_breaks <- leg_line_breaks
+leg_col_cols <- leg_line_cols
+y_pred_lp <- ggplot(Data_df, aes(x=t)) + 
+  geom_line(data=subset(Data_df, Data_df$t <= t[T+1]), aes(y=Adj.Close, color="line_black"), 
+            linetype="solid", alpha=1, size=1, group=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=Adj.Close, color="line_magenta"), 
+            linetype="solid", alpha=1, size=1, group=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_point_for, colour="line_brown"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_q99_low, colour="line_orange"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_q99_up, colour="line_orange"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_q95_low, colour="line_red"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_q95_up, colour="line_red"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_q90_low, colour="line_green"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_line(data=subset(Data_df, Data_df$t >= t[T+1]), aes(y=CSCO_q90_up, colour="line_green"), 
+            linetype="solid", alpha=1, size=1) + 
+  geom_ribbon(data=subset(Data_df, Data_df$t >= t[T+1]), 
+              alpha=0.3, colour=  "orangered", aes(ymin=CSCO_q95_low, ymax=CSCO_q90_low, fill="fill_r")) + 
+  geom_ribbon(data=subset(Data_df, Data_df$t >= t[T+1]), 
+              alpha=0.3, colour="orangered", aes(ymin=CSCO_q90_up, ymax=CSCO_q95_up, fill="fill_r")) + 
+  geom_ribbon(data=subset(Data_df, Data_df$t >= t[T+1]), 
+              alpha=0.3, colour="lightgreen", aes(ymin=CSCO_q90_low, ymax=CSCO_q90_up, fill="fill_g")) + 
+  geom_ribbon(data=subset(Data_df, Data_df$t >= t[T+1]), 
+              alpha=0.3, colour="orange", aes(ymin=CSCO_q99_low, ymax=CSCO_q95_low, fill="fill_o")) + 
+  geom_ribbon(data=subset(Data_df, Data_df$t >= t[T+1]), 
+              alpha=0.3, colour="orange", aes(ymin=CSCO_q95_up, ymax=CSCO_q99_up, fill="fill_o")) + 
+  scale_x_continuous(name=x_name, breaks=x_breaks, labels=x_labs, limits=x_lims) + 
+  scale_y_continuous(name=y_name, breaks=y_breaks, labels=NULL, limits=y_lims, sec.axis= sec_axis(~., breaks=y_breaks, labels=y_labs)) + 
+  ggtitle(title_content) + labs(subtitle=subtitle_content, caption=caption_content) + guides(linetype="none", shape="none") + 
+  scale_colour_manual(name="", labels=leg_line_labs, values=leg_line_cols, breaks=leg_line_breaks) + 
+  scale_fill_manual(name="", labels=leg_fill_labs, values=leg_fill_cols, breaks=leg_fill_breaks) + 
+  guides(colour=guide_legend(order=1), fill=guide_legend(order=2)) + 
+  theme(plot.title=element_text(hjust =0.5, size=10), 
+        plot.subtitle=element_text(hjust =0.5, size =8),
+        plot.caption = element_text(hjust =1.0, size =8 ), 
+        axis.text.x = element_text(angle=-45, vjust=1, hjust=-0.3), 
+        legend.key.width = unit(0.4,"cm"), legend.position="bottom")
+plot(y_pred_lp)
